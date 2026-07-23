@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Werewords</title>
+<style>
+body{
+    font-family: Arial;
+    max-width:600px;
+    margin:auto;
+    padding:20px;
+}
+#messages{
+    border:1px solid gray;
+    height:200px;
+    overflow:auto;
+    padding:10px;
+}
+.online{
+    color:green;
+}
+.offline{
+    color:red;
+}
+</style>
+</head>
+<body>
+<h1>🐺 Werewords</h1>
+<button onclick="testLogin()">
+Login
+</button>
+
+<h3 id="userInfo"></h3>
+
+<h3>Step 1: Create Username</h3>
+<input id="username" placeholder="Username">
+<button id="loginBtn">
+Login
+</button>
+
+
+
+
+
+<h3>Step 2: Join or Create Lobby</h3>
+<h4>Active Lobbies</h4>
+<ul id="lobbies"></ul>
+<h4>Create New Lobby</h4>
+<input id="lobbyName"
+placeholder="Lobby Name">
+<button onclick="createGame()">
+Create Lobby
+</button>
+<h3>Current Lobby:</h3>
+<div id="currentLobbyStatus">Not in a lobby</div>
+<button id="leaveLobbyBtn" onclick="leaveLobby()" style="display:none;">
+Leave Current Lobby
+</button>
+<button onclick="removeAllPlayers()">
+Remove All Players
+</button>
+
+<div id="hostSetup" style="display:none;">
+
+<h3>Host Setup</h3>
+
+<label>Number of Buildings</label>
+<select id="buildingCount">
+    <option value="3">3</option>
+    <option value="4">4</option>
+    <option value="5" selected>5</option>
+    <option value="6">6</option>
+    <option value="7">7</option>
+    <option value="8">8</option>
+</select>
+
+<br><br>
+
+<label>Initial Day Time</label>
+<select id="dayTime">
+    <option value="1">1 minute</option>
+    <option value="3" selected>3 minutes</option>
+    <option value="5">5 minutes</option>
+    <option value="10">10 minutes</option>
+</select>
+<div id="gameStatus"></div>
+<div id="playerRole"></div>
+<br><br>
+
+</div>
+<button id="startGameBtn" onclick="startGame()">Start Game</button>
+
+
+
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/client.js"></script>
+</body>
