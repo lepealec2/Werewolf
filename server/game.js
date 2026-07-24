@@ -43,7 +43,7 @@ function initializeGame(lobbyId,players,buildingCount=5){
     console.log("GAME PLAYERS:",gamePlayers);
     let possible=[BUILDINGS.ARMORY,BUILDINGS.BAKERY,BUILDINGS.CHAPEL,BUILDINGS.DOCKYARD,BUILDINGS.ABBEY,BUILDINGS.BLACKSMITH,BUILDINGS.BARRACKS,BUILDINGS.DUNGEON,BUILDINGS.DAM].sort(()=>Math.random()-0.5);
     let selected=[BUILDINGS.FOREST,...possible.slice(0,Math.max(0,buildingCount-1))];
-    games[lobbyId]={lobbyId,phase:PHASES.NIGHT,day:0,players:gamePlayers,buildings:{},destroyedBuildings:[],werewolfKills:[],seerInvestigation:null,solderProtection:null,lastSolderProtection:null,voting:{nominations:[],executionVotes:{},activeNomination:null,nominationTimer:null},nightVotes:{nominationLimit:{}}};
+    games[lobbyId]={lobbyId,phase:PHASES.NIGHT,day:0,players:gamePlayers,buildings:{},destroyedBuildings:[],werewolfKills:[],seerInvestigation:null,solderProtection:null,lastSolderProtection:null,voting:{nominations:[],executionVotes:{},activeNomination:null},nightVotes:{nominationLimit:{}}};
     selected.forEach(b=>{games[lobbyId].buildings[b]={name:b,players:[],destroyed:false};});
     return games[lobbyId];
 }

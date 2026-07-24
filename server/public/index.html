@@ -91,30 +91,39 @@ Leave Current Lobby
 </select>
 <br><br>
 <label>Phase Advance Threshold</label>
-<select id="advanceThresholdType">
+<select id="advanceThresholdType" onchange="toggleThresholdInput()">
     <option value="percent" selected>Percentage of living players</option>
     <option value="count">Number of players</option>
 </select>
-<input id="advanceThresholdValue" type="number" min="1" value="75" style="width:80px; margin-left:8px;"> 
-<div style="font-size:0.85em;color:#555;margin-top:6px;">If Percent selected, value is percent (1-100). If Count selected, value is number of living players required.</div>
+
+<input id="percentInput" type="number" min="1" max="100" value="75"
+       style="width:80px; margin-left:8px;">
+
+<input id="countInput" type="number" min="1"
+       style="width:80px; margin-left:8px; display:none;">
+
+<div style="font-size:0.85em;color:#555;margin-top:6px;">
+  Percent = % of living players. Count = exact number required.
+</div>
 <br><br>
-<label><input type="checkbox" id="hostCanBypass"> Allow host to force advance phases</label>
+<label>
+  <input type="checkbox" id="hostCanBypass" checked>
+  Allow host to force advance phases
+</label>
 <br><br>
 </div>
 <div id="gameStatus"></div>
 <div id="phaseStatus"></div>
-<div id="timerDisplay"></div>
 <div id="playerRole"></div>
 <div id="gameControls" style="display:none;">
     <h3>Game Controls</h3>
     <div id="buildingChooser"></div>
     <div id="abilityControls"></div>
+    <div id="gameActionStatus"></div>
     <div id="nominationControls"></div>
     <div id="voteControls"></div>
     <div id="readyControl"></div>
-    <div id="timerControls"></div>
-    <div id="gameActionStatus"></div>
-</div>
+/div>
 <button id="startGameBtn" onclick="startGame()">Start Game</button>
 
 

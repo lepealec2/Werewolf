@@ -264,7 +264,6 @@ function startGame(lobbyId,username,io){
         if(account)
             io.to(account.socketId).emit("yourRole",p.role);
     });
-    // timers disabled: phase advancement controlled by player submissions
     return {success:true};
 }
 function resetPlayerLocations(game){
@@ -450,6 +449,7 @@ function submitPhaseReady(socket,io){
         processPhaseEnd(player.lobbyId, io);
     }
 }
+
 function movePlayer(socket,building,io){
     let player=players[socket.id];
     if(!player || !player.lobbyId) return;
@@ -817,5 +817,5 @@ function forceAdvancePhase(socket,io){
     }
     processPhaseEnd(player.lobbyId, io);
 }
-module.exports={login,getPlayer,removeAll,disconnect,createGameId,getLobbies,joinLobby,leaveLobby,startGame,checkGameStart,submitWerewolfKill,submitSeerInvestigation,submitSoldierProtection,submitNightDayTimeVote,submitNightNominationLimitVote,submitExecutionVote,submitPhaseReady,forceAdvancePhase,movePlayer,resolveSeer,destroyBuilding,checkWin,updateLobbySettings};
+module.exports={login,getPlayer,removeAll,disconnect,createGameId,getLobbies,joinLobby,leaveLobby,startGame,checkGameStart,submitWerewolfKill,submitSeerInvestigation,submitSoldierProtection,submitNightDayTimeVote,submitNightNominationLimitVote,submitExecutionVote,submitPhaseReady,forceAdvancePhase,movePlayer,resolveSeer,destroyBuilding,checkWin,updateLobbySettings,submitPhaseReady};
  

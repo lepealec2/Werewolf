@@ -10,30 +10,7 @@ function formatTime(seconds){
     let secs=Math.floor(seconds%60);
     return `${mins}:${secs.toString().padStart(2,'0')}`;
 }
-function startPhaseCountdown(seconds){
-    stopPhaseCountdown();
-    phaseRemainingSeconds = Math.max(0, Math.floor(seconds));
-    phaseClockInterval = setInterval(()=>{
-        if(phaseRemainingSeconds<=0){
-            // notify server when local timer reaches zero (server will verify)
-            socket.emit("phaseExpired");
-            stopPhaseCountdown();
-            console.log("Clock Stopped")
-            updateGameUI();
-            console.log("UI Updated")
-            return;
-        }
-        phaseRemainingSeconds--;
-        updateGameUI();
-    },1000);
-    updateGameUI();
-}
-function stopPhaseCountdown(){
-    if(phaseClockInterval){
-        clearInterval(phaseClockInterval);
-        phaseClockInterval=null;
-    }
-}
+
 function updateGameUI(){
     console.log("=== updateGameUI called ===");
 
@@ -51,16 +28,14 @@ function updateGameUI(){
     const gameControls = document.getElementById("gameControls");
     const gameStatus = document.getElementById("gameStatus");
     const phaseStatus = document.getElementById("phaseStatus");
-    const timerDisplay = document.getElementById("timerDisplay");
 
     console.log("ELEMENT CHECK:", {
         hostSetup: !!hostSetup,
         startGameBtn: !!startGameBtn,
         gameControls: !!gameControls,
         gameStatus: !!gameStatus,
-        phaseStatus: !!phaseStatus,
-        timerDisplay: !!timerDisplay
-    });
+        phaseStatus: !!phaseStatus
+        });
 
     // Compute values first (easier to debug)
     const hostSetupDisplay = currentGameStarted ? "none" : (isHost ? "block" : "none");
@@ -69,15 +44,13 @@ function updateGameUI(){
 
     const gameStatusText = currentGameStarted ? "Game started." : "";
     const phaseStatusText = currentPhase ? `Current phase: ${currentPhase}` : "";
-    const timerText = currentPhase ? `Phase timer: ${formatTime(phaseRemainingSeconds)}` : "";
 
     console.log("COMPUTED UI:", {
         hostSetupDisplay,
         startBtnDisplay,
         controlsDisplay,
         gameStatusText,
-        phaseStatusText,
-        timerText
+        phaseStatusText
     });
 
     // Apply safely (avoid silent crashes)
@@ -86,7 +59,6 @@ function updateGameUI(){
     if(gameControls) gameControls.style.display = controlsDisplay;
     if(gameStatus) gameStatus.innerText = gameStatusText;
     if(phaseStatus) phaseStatus.innerText = phaseStatusText;
-    if(timerDisplay) timerDisplay.innerText = timerText;
 
     console.log("=== updateGameUI complete ===");
 }function updateGameUI(){
@@ -105,15 +77,13 @@ function updateGameUI(){
     const gameControls = document.getElementById("gameControls");
     const gameStatus = document.getElementById("gameStatus");
     const phaseStatus = document.getElementById("phaseStatus");
-    const timerDisplay = document.getElementById("timerDisplay");
 
     console.log("ELEMENT CHECK:", {
         hostSetup: !!hostSetup,
         startGameBtn: !!startGameBtn,
         gameControls: !!gameControls,
         gameStatus: !!gameStatus,
-        phaseStatus: !!phaseStatus,
-        timerDisplay: !!timerDisplay
+        phaseStatus: !!phaseStatus
     });
 
     // Compute values first (easier to debug)
@@ -123,15 +93,13 @@ function updateGameUI(){
 
     const gameStatusText = currentGameStarted ? "Game started." : "";
     const phaseStatusText = currentPhase ? `Current phase: ${currentPhase}` : "";
-    const timerText = currentPhase ? `Phase timer: ${formatTime(phaseRemainingSeconds)}` : "";
 
     console.log("COMPUTED UI:", {
         hostSetupDisplay,
         startBtnDisplay,
         controlsDisplay,
         gameStatusText,
-        phaseStatusText,
-        timerText
+        phaseStatusText
     });
 
     // Apply safely (avoid silent crashes)
@@ -140,8 +108,6 @@ function updateGameUI(){
     if(gameControls) gameControls.style.display = controlsDisplay;
     if(gameStatus) gameStatus.innerText = gameStatusText;
     if(phaseStatus) phaseStatus.innerText = phaseStatusText;
-    if(timerDisplay) timerDisplay.innerText = timerText;
-
     console.log("=== updateGameUI complete ===");
 }
 function updateGameActionStatus(message){
@@ -281,17 +247,7 @@ function renderVoteControls(){
         return;
     }
     if(currentPhase==="Night"){
-        container.innerHTML=`<h4>Night phase voting</h4>
-            <div>
-                        <label>Next day time:</label>
-                        <select id="nextDayTimeVote" onchange="submitDayTimeVote()">
-                            <option value="random">🎲 Random</option>
-                            <option value="1">1 minute</option>
-                            <option value="3">3 minutes</option>
-                            <option value="5">5 minutes</option>
-                            <option value="10">10 minutes</option>
-                        </select>
-            </div>
+        container.innerHTML=`
             <div>
                 <label>Nomination limit:</label>
                 <select id="nominationLimitVoteControl" onchange="submitNominationLimitVote()">
@@ -308,34 +264,6 @@ function renderVoteControls(){
         let options=aliveUsers.map(p=>`<option value="${p.username}">${p.username}</option>`).join("");
         container.innerHTML=`<h4>Execution vote</h4>
             <select id="executionTarget" onchange="submitExecutionVote()">${options}</select>`;
-    }
-}
-let timerPaused=false;
-function renderTimerControls(){
-    let container=document.getElementById("timerControls");
-    if(!container) return;
-    if(!currentGameStarted || !isHost) {
-        container.innerHTML="";
-        return;
-    }
-    container.innerHTML=`<h4>Timer controls (host)</h4>
-        <div style="margin-bottom:8px;">
-            <strong>Current phase:</strong> ${currentPhase}
-        </div>
-        <div style="margin-bottom:6px;">
-            <em>Day controls</em>
-            <button onclick="togglePausePhaseNamed('Day')">Pause</button>
-            <button onclick="adjustTimerPhase('Day',15)">+15s</button>
-            <button onclick="adjustTimerPhase('Day',-15)">-15s</button>
-        </div>
-        <div>
-            <em>Night controls</em>
-            <button onclick="togglePausePhaseNamed('Night')">Pause</button>
-            <button onclick="adjustTimerPhase('Night',15)">+15s</button>
-            <button onclick="adjustTimerPhase('Night',-15)">-15s</button>
-        </div>`;
-    if(hostCanBypass){
-        container.innerHTML += `<div style="margin-top:8px;"><strong>Host force</strong>: <button onclick="forceAdvance()">Force Advance Phase</button></div>`;
     }
 }
 
@@ -357,44 +285,55 @@ function computeReadyRequirement(){
 }
 
 function renderReadyControl(){
-    let container=document.getElementById('readyControl');
+    let container = document.getElementById('readyControl');
     if(!container) return;
-    if(!currentGameStarted){ container.innerHTML=''; return; }
-    let alive = gamePlayers.filter(p=>p.alive).length;
+    if(!currentGameStarted){
+        container.innerHTML = '';
+        return;
+    }
+    let alive = gamePlayers.filter(p => p.alive).length;
+    let readyCount = phaseReadyCount || 0;
+    console.log("phaseReadyCount:", phaseReadyCount, typeof phaseReadyCount);
+    console.log("===renderReadyControl:===")
+    console.log("ready:",readyCount)
     let required = computeReadyRequirement();
-    let readyPercent = alive ? Math.round((phaseReadyCount / alive) * 100) : 0;
-    let thresholdPercent = phaseAdvanceType === 'percent'
-        ? `${phaseAdvanceValue || 75}% of living players`
-        : `${phaseAdvanceValue || 1} players`;
-    let statusText = `Ready: ${phaseReadyCount}/${required} (${readyPercent}%)`;
+
+    let readyPercent = alive 
+        ? Math.round((readyCount / alive) * 100) 
+        : 0;
+
+    let thresholdText = phaseAdvanceType === 'percent'
+        ? `${phaseAdvanceValue ?? 75}% of living players`
+        : `${phaseAdvanceValue ?? 1} players`;
+
+    let statusText = `Ready: ${readyCount}/${required} (${readyPercent}% of living players)`;
+
     let btnHtml = readySubmitted
         ? `<div style="margin-top:8px; font-weight:bold;">Ready submitted</div>`
         : `<button onclick="submitReady()">I'm Ready</button>`;
+
     container.innerHTML = `
         <h4>Advance by Ready</h4>
-        <div style="font-size:0.9em;color:#555;margin-bottom:6px;">When enough players submit ready, the server advances the phase.</div>
-        <div style="margin-bottom:4px;">Threshold: ${thresholdPercent}</div>
-        <div style="margin-bottom:8px;">${statusText}</div>
+        <div style="font-size:0.9em;color:#555;margin-bottom:6px;">
+            When enough players submit ready, the server advances the phase.
+        </div>
+        <div style="margin-bottom:4px;">
+            Threshold: ${thresholdText}
+        </div>
+        <div style="margin-bottom:8px;">
+            ${statusText}
+        </div>
         ${btnHtml}
     `;
 }
-
 function submitReady(){
+    console.log("submitReady called")
     if(readySubmitted) return;
     socket.emit('submitPhaseReady');
     readySubmitted = true;
     renderReadyControl();
+    console.log("submitReady ended")
 }
-
-socket.on('phaseReadyUpdate', data=>{
-    phaseReadyCount = typeof data.count === 'number' ? data.count : 0;
-    phaseReadyRequired = typeof data.required === 'number' ? data.required : phaseReadyRequired;
-    if(data.advanced){
-        readySubmitted = false;
-    }
-    renderReadyControl();
-    updateGameActionStatus(`Ready: ${phaseReadyCount}/${phaseReadyRequired}`);
-});
 function moveToBuilding(){
     let select=document.getElementById("buildingSelect");
     if(!select) return;
@@ -438,32 +377,9 @@ function submitNominationLimitVote(){
     if(!select) return;
     socket.emit("nightVoteNominationLimit",parseInt(select.value,10));
 }
-function togglePauseTimer(){
-    socket.emit("pauseTimer");
-}
-function adjustTimer(amount){
-    socket.emit("adjustTimer",amount);
-}
-function useTimer(){
-    let input=document.getElementById("timerSeconds");
-    if(!input) return;
-    let seconds=parseInt(input.value,10);
-    if(isNaN(seconds)||seconds<=0){
-        updateGameActionStatus("Enter a valid number of seconds.");
-        return;
-    }
-    socket.emit("useTimer",seconds);
-}
-function adjustTimerPhase(phase,amount){
-    socket.emit("adjustTimerPhase",{phase,amount});
-}
-function togglePausePhaseNamed(phase){
-    socket.emit("pauseTimerPhase",phase);
-}
 socket.on("connect",()=>{console.log("CLIENT CONNECTED:",socket.id);});
 socket.on("hostChanged",data=>{
     isHost=data.newHost===currentUsername;
-    let btn=document.getElementById("pauseTimerBtn");
     if(btn) btn.style.display=isHost?"inline":"none";
     updateUserInfo();updateDebug();
     updateGameUI();
@@ -489,7 +405,6 @@ socket.on("seerInvestigationResult",data=>{
     if(data.targets?.length) msg += ` (targets: ${data.targets.join(", ")})`;
     updateGameActionStatus(msg);
 });
-function voteTimer(value){socket.emit("submitVote",{type:"dayTime",value});}
 function submitNominationLimitVote(){
     let value=document.getElementById("nominationLimitVote").value;
     socket.emit("submitVote",{type:"nominationLimit",value:parseInt(value)});
@@ -573,13 +488,11 @@ socket.on("gameStarted",data=>{
     phaseDuration=data.phaseDuration||0;
     gameBuildings=data.buildings||{};
     gamePlayers=data.players||[];
-    // timers removed - phase advancement will be via submissions
     updateGameUI();
     renderBuildingChooser();
     renderAbilityControls();
     renderVoteControls();
     renderReadyControl();
-    renderTimerControls();
     updateGameActionStatus(`Game started. ${currentPhase} phase.`);
 });
 
@@ -596,7 +509,6 @@ socket.on("yourRole",role=>{
     roleEl.innerHTML="Your role: "+role;
     renderAbilityControls();
     renderVoteControls();
-    renderTimerControls();
 });
 socket.on("locationUpdated",data=>{
     console.log("Location updated:",data);
@@ -628,55 +540,43 @@ socket.on("nightVoteUpdate",data=>{
 socket.on("phaseChanged",data=>{
     currentPhase = data.phase;
     phaseDuration = data.phaseDuration || 0;
-    timerPaused = false;
     gamePlayers = data.players || gamePlayers;
     gameBuildings = data.buildings || gameBuildings;
-    // timers removed
     updateGameUI();
     renderBuildingChooser();
     renderAbilityControls();
     renderVoteControls();
-    renderTimerControls();
     renderReadyControl();
     updateGameActionStatus(`Phase changed to ${currentPhase}.`);
 });
-socket.on("timerUsed",data=>{
-    if(data.phase === currentPhase){
-        phaseDuration = data.phaseDuration || phaseDuration;
-        phaseRemainingSeconds = data.phaseTimeRemaining || phaseDuration || phaseRemainingSeconds;
-        // timers removed
-        updateGameUI();
-        updateGameActionStatus(`${data.username} added ${data.addedSeconds}s, remaining phase time is now ${data.phaseTimeRemaining}s.`);
-    }
-});
-socket.on("timerPaused",data=>{
-    if(data.phase === currentPhase){
-        timerPaused=data.paused;
-        phaseDuration = data.phaseDuration || phaseDuration;
-        phaseRemainingSeconds = data.phaseTimeRemaining || phaseRemainingSeconds;
-        if(data.paused){
-            // timers removed
-        } else {
-            // timers removed
-        }
-        updateGameUI();
-        renderTimerControls();
-        updateGameActionStatus(data.paused ? "Timer paused." : "Timer resumed.");
-    }
-});
-socket.on("timerAdjusted",data=>{
-    if(data.phase === currentPhase){
-        phaseDuration = data.phaseDuration || phaseDuration;
-        phaseRemainingSeconds = data.phaseTimeRemaining || phaseRemainingSeconds;
-        // timers removed
-        updateGameUI();
-        updateGameActionStatus(`Timer adjusted by ${data.amount}s, remaining time is ${data.phaseTimeRemaining}s.`);
-    }
-    else {
-        // pending adjustment for non-active phase
-        updateGameActionStatus(`Pending ${data.phase} timer adjusted by ${data.amount}s (pending ${data.pending||0}s).`);
-    }
-});
 socket.on("actionError",msg=>{
     updateGameActionStatus(`Action error: ${msg}`);
+});
+function toggleThresholdInput() {
+    const type = document.getElementById("advanceThresholdType").value;
+    document.getElementById("percentInput").style.display =
+        type === "percent" ? "inline-block" : "none";
+    document.getElementById("countInput").style.display =
+        type === "count" ? "inline-block" : "none";
+}
+
+function getRequiredSubmissions(aliveCount) {
+    const type = document.getElementById("advanceThresholdType").value;
+
+    if (type === "percent") {
+        const percent = parseInt(document.getElementById("percentInput").value, 10) || 0;
+        return Math.ceil((percent / 100) * aliveCount);
+    } else {
+        let count = parseInt(document.getElementById("countInput").value, 10) || 0;
+
+        // Auto-cap at alive players
+        return Math.min(count, aliveCount);
+    }
+}
+
+socket.on('phaseReadyUpdate', data => {
+    console.log("PHASE READY UPDATE RECEIVED:", data);
+    phaseReadyCount = data.count;
+    phaseReadyRequired = data.required;
+    renderReadyControl();
 });
