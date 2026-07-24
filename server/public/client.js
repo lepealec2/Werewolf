@@ -166,7 +166,11 @@ function renderBuildingChooser(){
     });
     container.innerHTML=`<h4>Move to a building</h4>
     <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
-        Choose your Night location. Werewolf attacks can target any player, but only succeed if a Werewolf ends the night in the same building as the target. One building is destroyed each Night until only one remains.
+        Choose your Night location.<br>
+        Under the cover of darkness, Werewolves choose a target—but their attack only succeeds if:<br>
+        1. A Werewolf is lurking in the same location as the target, OR<br>
+        2. The target hides in a location that does not have a majority of total alive players, ties are not safe.<br>
+        As dawn approaches, one building is destroyed each night… until only one remains.
     </div>
         <select id="buildingSelect" onchange="moveToBuilding()">${options}</select>`;
 }
@@ -185,7 +189,7 @@ function renderAbilityControls(){
         container.innerHTML=`
             <h4>🐺 Werewolf Attack</h4>
             <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
-                🗡️ Choose a player in your building to attack, or select no one to skip the attack.
+                🗡️ Choose a player in your building to attack, or select no one to skip the attack. <br>
             </div>
             <select id="attackTarget" onchange="submitWerewolfKill()">${options}</select>
         `;
@@ -196,10 +200,11 @@ function renderAbilityControls(){
         container.innerHTML=`
             <h4>🔮 Seer Investigation</h4>
             <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
-                👁️ Choose exactly two different players to investigate. You will learn whether either player is a Werewolf or Soldier. You may choose yourself.
+                👁️ Choose exactly two different players to investigate. You will learn whether either player is a Werewolf or Soldier. You may choose yourself. <br>
             </div>
             <div><label>🎯 Target 1:</label><select id="seerTarget1">${options}</select></div>
             <div><label>🎯 Target 2:</label><select id="seerTarget2">${options}</select></div>
+            <br>
             <button onclick="submitSeerInvestigation()">🔍 Investigate</button>
             <p style="font-size:0.9em;margin-top:0.5em;">
                 ❗ Targets must be different. If you choose the same explicit player for both targets, the action will fail.
@@ -213,6 +218,7 @@ function renderAbilityControls(){
             <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
                 🛡️ Choose a player to protect tonight. You cannot protect the same player on consecutive nights.
             </div>
+            <br>
             <select id="protectTarget">${options}</select>
             <button onclick="submitSoldierProtection()">✨ Protect</button>
         `;
