@@ -1,22 +1,487 @@
-let currentUsername=null,currentLobby=null,myRole=null;
+let currentUsername=null,currentLobby=null,myRole=null,currentRole=null,currentPhase=null,phaseDuration=0,currentGameStarted=false,gameBuildings={},gamePlayers=[],isHost=false,phaseRemainingSeconds=0,phaseClockInterval=null;
+let phaseReadyCount=0, phaseReadyRequired=0, readySubmitted=false;
+let phaseAdvanceType='percent', phaseAdvanceValue=75;
+let hostCanBypass=false;
 console.log("client.JS LOADED");
 const socket=io();
 console.log("SOCKET CREATED");
+function formatTime(seconds){
+    let mins=Math.floor(seconds/60);
+    let secs=Math.floor(seconds%60);
+    return `${mins}:${secs.toString().padStart(2,'0')}`;
+}
+function startPhaseCountdown(seconds){
+    stopPhaseCountdown();
+    phaseRemainingSeconds = Math.max(0, Math.floor(seconds));
+    phaseClockInterval = setInterval(()=>{
+        if(phaseRemainingSeconds<=0){
+            // notify server when local timer reaches zero (server will verify)
+            socket.emit("phaseExpired");
+            stopPhaseCountdown();
+            console.log("Clock Stopped")
+            updateGameUI();
+            console.log("UI Updated")
+            return;
+        }
+        phaseRemainingSeconds--;
+        updateGameUI();
+    },1000);
+    updateGameUI();
+}
+function stopPhaseCountdown(){
+    if(phaseClockInterval){
+        clearInterval(phaseClockInterval);
+        phaseClockInterval=null;
+    }
+}
+function updateGameUI(){
+    console.log("=== updateGameUI called ===");
+
+    // Log core state
+    console.log("STATE:", {
+        currentGameStarted,
+        isHost,
+        currentPhase,
+        phaseRemainingSeconds
+    });
+
+    // Grab elements once + validate
+    const hostSetup = document.getElementById("hostSetup");
+    const startGameBtn = document.getElementById("startGameBtn");
+    const gameControls = document.getElementById("gameControls");
+    const gameStatus = document.getElementById("gameStatus");
+    const phaseStatus = document.getElementById("phaseStatus");
+    const timerDisplay = document.getElementById("timerDisplay");
+
+    console.log("ELEMENT CHECK:", {
+        hostSetup: !!hostSetup,
+        startGameBtn: !!startGameBtn,
+        gameControls: !!gameControls,
+        gameStatus: !!gameStatus,
+        phaseStatus: !!phaseStatus,
+        timerDisplay: !!timerDisplay
+    });
+
+    // Compute values first (easier to debug)
+    const hostSetupDisplay = currentGameStarted ? "none" : (isHost ? "block" : "none");
+    const startBtnDisplay = currentGameStarted ? "none" : (isHost ? "block" : "none");
+    const controlsDisplay = currentGameStarted ? "block" : "none";
+
+    const gameStatusText = currentGameStarted ? "Game started." : "";
+    const phaseStatusText = currentPhase ? `Current phase: ${currentPhase}` : "";
+    const timerText = currentPhase ? `Phase timer: ${formatTime(phaseRemainingSeconds)}` : "";
+
+    console.log("COMPUTED UI:", {
+        hostSetupDisplay,
+        startBtnDisplay,
+        controlsDisplay,
+        gameStatusText,
+        phaseStatusText,
+        timerText
+    });
+
+    // Apply safely (avoid silent crashes)
+    if(hostSetup) hostSetup.style.display = hostSetupDisplay;
+    if(startGameBtn) startGameBtn.style.display = startBtnDisplay;
+    if(gameControls) gameControls.style.display = controlsDisplay;
+    if(gameStatus) gameStatus.innerText = gameStatusText;
+    if(phaseStatus) phaseStatus.innerText = phaseStatusText;
+    if(timerDisplay) timerDisplay.innerText = timerText;
+
+    console.log("=== updateGameUI complete ===");
+}function updateGameUI(){
+    console.log("=== updateGameUI called ===");
+    // Log core state
+    console.log("STATE:", {
+        currentGameStarted,
+        isHost,
+        currentPhase,
+        phaseRemainingSeconds
+    });
+
+    // Grab elements once + validate
+    const hostSetup = document.getElementById("hostSetup");
+    const startGameBtn = document.getElementById("startGameBtn");
+    const gameControls = document.getElementById("gameControls");
+    const gameStatus = document.getElementById("gameStatus");
+    const phaseStatus = document.getElementById("phaseStatus");
+    const timerDisplay = document.getElementById("timerDisplay");
+
+    console.log("ELEMENT CHECK:", {
+        hostSetup: !!hostSetup,
+        startGameBtn: !!startGameBtn,
+        gameControls: !!gameControls,
+        gameStatus: !!gameStatus,
+        phaseStatus: !!phaseStatus,
+        timerDisplay: !!timerDisplay
+    });
+
+    // Compute values first (easier to debug)
+    const hostSetupDisplay = currentGameStarted ? "none" : (isHost ? "block" : "none");
+    const startBtnDisplay = currentGameStarted ? "none" : (isHost ? "block" : "none");
+    const controlsDisplay = currentGameStarted ? "block" : "none";
+
+    const gameStatusText = currentGameStarted ? "Game started." : "";
+    const phaseStatusText = currentPhase ? `Current phase: ${currentPhase}` : "";
+    const timerText = currentPhase ? `Phase timer: ${formatTime(phaseRemainingSeconds)}` : "";
+
+    console.log("COMPUTED UI:", {
+        hostSetupDisplay,
+        startBtnDisplay,
+        controlsDisplay,
+        gameStatusText,
+        phaseStatusText,
+        timerText
+    });
+
+    // Apply safely (avoid silent crashes)
+    if(hostSetup) hostSetup.style.display = hostSetupDisplay;
+    if(startGameBtn) startGameBtn.style.display = startBtnDisplay;
+    if(gameControls) gameControls.style.display = controlsDisplay;
+    if(gameStatus) gameStatus.innerText = gameStatusText;
+    if(phaseStatus) phaseStatus.innerText = phaseStatusText;
+    if(timerDisplay) timerDisplay.innerText = timerText;
+
+    console.log("=== updateGameUI complete ===");
+}
+function updateGameActionStatus(message){
+    let status=document.getElementById("gameActionStatus");
+    if(status) status.innerText=message||"";
+}
+function renderBuildingChooser(){
+    let container=document.getElementById("buildingChooser");
+    if(!container) return;
+    if(!currentGameStarted || currentPhase!=="Night") {
+        container.innerHTML="";
+        return;
+    }
+    let options=`<option value="random" selected>Random</option>`;
+    Object.keys(gameBuildings).forEach(building=>{
+        let info=gameBuildings[building];
+        let playerList = (info.players && info.players.length)
+            ? ` [${info.players.join(", ")}]`
+            : "";
+        let label=building + (info.destroyed?" (destroyed)":"") + playerList;
+        options+=`<option value="${building}" ${info.destroyed?"disabled":""}>${label}</option>`;
+    });
+    container.innerHTML=`<h4>Move to a building</h4>
+    <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
+        Choose your Night location. Werewolf attacks can target any player, but only succeed if a Werewolf ends the night in the same building as the target. One building is destroyed each Night until only one remains.
+    </div>
+        <select id="buildingSelect" onchange="moveToBuilding()">${options}</select>`;
+}
+function renderAbilityControls(){
+    let container=document.getElementById("abilityControls");
+    if(!container) return;
+    if(!currentGameStarted || currentPhase!=="Night" || !currentRole){
+        container.innerHTML="";
+        return;
+    }
+    let otherPlayers = gamePlayers.filter(u=>u.username!==currentUsername && u.alive);
+    if(currentRole==="Werewolf"){
+        let options=`<option value="random" selected>🎲 Random</option><option value="none">🚫 No one</option>` 
+            + otherPlayers.map(p=>`<option value="${p.username}">${p.username}</option>`).join("");
+
+        container.innerHTML=`
+            <h4>🐺 Werewolf Attack</h4>
+            <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
+                🗡️ Choose a player in your building to attack, or select no one to skip the attack.
+            </div>
+            <select id="attackTarget" onchange="submitWerewolfKill()">${options}</select>
+        `;
+    } else if(currentRole==="Seer"){ 
+        let options=`<option value="random" selected>🎲 Random</option>` 
+            + gamePlayers.map(p=>`<option value="${p.username}">${p.username}</option>`).join("");
+
+        container.innerHTML=`
+            <h4>🔮 Seer Investigation</h4>
+            <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
+                👁️ Choose exactly two different players to investigate. You will learn whether either player is a Werewolf or Soldier. You may choose yourself.
+            </div>
+            <div><label>🎯 Target 1:</label><select id="seerTarget1">${options}</select></div>
+            <div><label>🎯 Target 2:</label><select id="seerTarget2">${options}</select></div>
+            <button onclick="submitSeerInvestigation()">🔍 Investigate</button>
+            <p style="font-size:0.9em;margin-top:0.5em;">
+                ❗ Targets must be different. If you choose the same explicit player for both targets, the action will fail.
+            </p>
+        `;
+    } else if(currentRole==="Soldier" || currentRole==="Solder"){
+        let options=`<option value="random" selected>🎲 Random</option>` 
+            + gamePlayers.map(p=>`<option value="${p.username}">${p.username}</option>`).join("");
+        container.innerHTML=`
+            <h4>🛡️ Soldier Protection</h4>
+            <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
+                🛡️ Choose a player to protect tonight. You cannot protect the same player on consecutive nights.
+            </div>
+            <select id="protectTarget">${options}</select>
+            <button onclick="submitSoldierProtection()">✨ Protect</button>
+        `;
+    } else {
+        let villagerMessages = [
+            "Just try not to die.",
+            "Try not to look suspicious.",
+            "Don't be sus.",
+            "The weather sure is bleak today.",
+            "I hope I don't get killed tonight.",
+            "I hope no one thinks I'm a Werewolf.",
+            "Stay calm and trust your instincts.",
+            "Maybe the Werewolves will overlook me.",
+            "I should probably avoid looking too nervous.",
+            "Survive first. Ask questions later.",
+            "I swear I'm just a normal villager.",
+            "Nothing suspicious happening here.",
+            "Why is everyone looking at me?",
+            "I have a very normal villager schedule.",
+            "The moon looks a little too bright tonight...",
+            "I definitely do not know anything important.",
+            "Trust me. Probably.",
+            "I have no idea who the Werewolves are. 👀",
+            "You are a lonely villager"
+        ];
+        let specialMessages = [
+            "You may be special, but not in this game. Sorry!",
+            "You were promised greatness. Unfortunately, you are a Villager.",
+            "Your special ability is... surviving.",
+            "Congratulations! Your power is having no power.",
+            "The village needs ordinary people too.",
+            "You have no ability. Try being suspicious anyway."
+        ];
+
+        let specialMessage = "You have no special ability.";
+        if (Math.random() < 0.10) {
+            specialMessage = `
+                <p style="font-size:0.9em; color:#555; font-style:italic;">
+                    ${specialMessages[Math.floor(Math.random() * specialMessages.length)]}
+                </p>
+            `;
+        }
+        let message = "You are a lolely villager.";
+        if (Math.random() < 0.25) {
+            message = `<p style="font-size:0.9em; color:#555; font-style:italic;">
+                ${villagerMessages[Math.floor(Math.random() * villagerMessages.length)]}
+            </p>`;
+        }
+        container.innerHTML = `
+        ${specialMessage}
+        ${message}
+`;
+}}
+
+function renderVoteControls(){
+    let container=document.getElementById("voteControls");
+    if(!container) return;
+    if(!currentGameStarted){
+        container.innerHTML="";
+        return;
+    }
+    if(currentPhase==="Night"){
+        container.innerHTML=`<h4>Night phase voting</h4>
+            <div>
+                        <label>Next day time:</label>
+                        <select id="nextDayTimeVote" onchange="submitDayTimeVote()">
+                            <option value="random">🎲 Random</option>
+                            <option value="1">1 minute</option>
+                            <option value="3">3 minutes</option>
+                            <option value="5">5 minutes</option>
+                            <option value="10">10 minutes</option>
+                        </select>
+            </div>
+            <div>
+                <label>Nomination limit:</label>
+                <select id="nominationLimitVoteControl" onchange="submitNominationLimitVote()">
+                    <option value="random">🎲 Random</option>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+            </div>`;
+    } else {
+        let aliveUsers=gamePlayers.filter(u=>u.alive);
+        let options=aliveUsers.map(p=>`<option value="${p.username}">${p.username}</option>`).join("");
+        container.innerHTML=`<h4>Execution vote</h4>
+            <select id="executionTarget" onchange="submitExecutionVote()">${options}</select>`;
+    }
+}
+let timerPaused=false;
+function renderTimerControls(){
+    let container=document.getElementById("timerControls");
+    if(!container) return;
+    if(!currentGameStarted || !isHost) {
+        container.innerHTML="";
+        return;
+    }
+    container.innerHTML=`<h4>Timer controls (host)</h4>
+        <div style="margin-bottom:8px;">
+            <strong>Current phase:</strong> ${currentPhase}
+        </div>
+        <div style="margin-bottom:6px;">
+            <em>Day controls</em>
+            <button onclick="togglePausePhaseNamed('Day')">Pause</button>
+            <button onclick="adjustTimerPhase('Day',15)">+15s</button>
+            <button onclick="adjustTimerPhase('Day',-15)">-15s</button>
+        </div>
+        <div>
+            <em>Night controls</em>
+            <button onclick="togglePausePhaseNamed('Night')">Pause</button>
+            <button onclick="adjustTimerPhase('Night',15)">+15s</button>
+            <button onclick="adjustTimerPhase('Night',-15)">-15s</button>
+        </div>`;
+    if(hostCanBypass){
+        container.innerHTML += `<div style="margin-top:8px;"><strong>Host force</strong>: <button onclick="forceAdvance()">Force Advance Phase</button></div>`;
+    }
+}
+
+function forceAdvance(){
+    socket.emit('forceAdvancePhase');
+}
+function computeReadyRequirement(){
+    let alive = gamePlayers.filter(p=>p.alive).length;
+    let required = phaseReadyRequired || 0;
+    if(!required){
+        let value = phaseAdvanceValue || 75;
+        if(phaseAdvanceType === 'count'){
+            required = Math.min(Math.max(1, Number(value) || 1), alive);
+        } else {
+            required = Math.max(1, Math.ceil(alive * ((Number(value) || 75) / 100)));
+        }
+    }
+    return Math.min(required, Math.max(1, alive));
+}
+
+function renderReadyControl(){
+    let container=document.getElementById('readyControl');
+    if(!container) return;
+    if(!currentGameStarted){ container.innerHTML=''; return; }
+    let alive = gamePlayers.filter(p=>p.alive).length;
+    let required = computeReadyRequirement();
+    let readyPercent = alive ? Math.round((phaseReadyCount / alive) * 100) : 0;
+    let thresholdPercent = phaseAdvanceType === 'percent'
+        ? `${phaseAdvanceValue || 75}% of living players`
+        : `${phaseAdvanceValue || 1} players`;
+    let statusText = `Ready: ${phaseReadyCount}/${required} (${readyPercent}%)`;
+    let btnHtml = readySubmitted
+        ? `<div style="margin-top:8px; font-weight:bold;">Ready submitted</div>`
+        : `<button onclick="submitReady()">I'm Ready</button>`;
+    container.innerHTML = `
+        <h4>Advance by Ready</h4>
+        <div style="font-size:0.9em;color:#555;margin-bottom:6px;">When enough players submit ready, the server advances the phase.</div>
+        <div style="margin-bottom:4px;">Threshold: ${thresholdPercent}</div>
+        <div style="margin-bottom:8px;">${statusText}</div>
+        ${btnHtml}
+    `;
+}
+
+function submitReady(){
+    if(readySubmitted) return;
+    socket.emit('submitPhaseReady');
+    readySubmitted = true;
+    renderReadyControl();
+}
+
+socket.on('phaseReadyUpdate', data=>{
+    phaseReadyCount = typeof data.count === 'number' ? data.count : 0;
+    phaseReadyRequired = typeof data.required === 'number' ? data.required : phaseReadyRequired;
+    if(data.advanced){
+        readySubmitted = false;
+    }
+    renderReadyControl();
+    updateGameActionStatus(`Ready: ${phaseReadyCount}/${phaseReadyRequired}`);
+});
+function moveToBuilding(){
+    let select=document.getElementById("buildingSelect");
+    if(!select) return;
+    let building=select.value;
+    socket.emit("moveToBuilding",building);
+}
+function submitWerewolfKill(){
+    let select=document.getElementById("attackTarget");
+    if(!select) return;
+    socket.emit("werewolfKill",select.value);
+}
+function submitSeerInvestigation(){
+    let target1=document.getElementById("seerTarget1");
+    let target2=document.getElementById("seerTarget2");
+    if(target1 && target2 && target1.value === target2.value && target1.value !== "random"){
+        updateGameActionStatus("Targets must be different.");
+        return;
+    }
+    let targets=[];
+    if(target1) targets.push(target1.value);
+    if(target2) targets.push(target2.value);
+    socket.emit("seerInvestigate",targets);
+}
+function submitSoldierProtection(){
+    let select=document.getElementById("protectTarget");
+    if(!select) return;
+    socket.emit("soldierProtect",select.value);
+}
+function submitExecutionVote(){
+    let select=document.getElementById("executionTarget");
+    if(!select) return;
+    socket.emit("executionVote",select.value);
+}
+function submitDayTimeVote(){
+    let select=document.getElementById("nextDayTimeVote");
+    if(!select) return;
+    socket.emit("nightVoteDayTime",parseInt(select.value,10));
+}
+function submitNominationLimitVote(){
+    let select=document.getElementById("nominationLimitVoteControl");
+    if(!select) return;
+    socket.emit("nightVoteNominationLimit",parseInt(select.value,10));
+}
+function togglePauseTimer(){
+    socket.emit("pauseTimer");
+}
+function adjustTimer(amount){
+    socket.emit("adjustTimer",amount);
+}
+function useTimer(){
+    let input=document.getElementById("timerSeconds");
+    if(!input) return;
+    let seconds=parseInt(input.value,10);
+    if(isNaN(seconds)||seconds<=0){
+        updateGameActionStatus("Enter a valid number of seconds.");
+        return;
+    }
+    socket.emit("useTimer",seconds);
+}
+function adjustTimerPhase(phase,amount){
+    socket.emit("adjustTimerPhase",{phase,amount});
+}
+function togglePausePhaseNamed(phase){
+    socket.emit("pauseTimerPhase",phase);
+}
 socket.on("connect",()=>{console.log("CLIENT CONNECTED:",socket.id);});
 socket.on("hostChanged",data=>{
     isHost=data.newHost===currentUsername;
     let btn=document.getElementById("pauseTimerBtn");
     if(btn) btn.style.display=isHost?"inline":"none";
     updateUserInfo();updateDebug();
+    updateGameUI();
 });
 socket.on("settingsChanged",settings=>{console.log("Settings updated:",settings);});
 socket.on("gameOver",data=>{alert("Game Over! Winner: "+data.winner);});
 socket.on("nightResults",data=>{
     let msg="Night Results:\n";
-    msg+=data.killed?data.killed+" was killed!\n":"No one was killed.\n";
+    if(data.killed){
+        msg+=data.killed+" was killed!\n";
+    } else if(data.attackFailed){
+        msg+="The werewolf attack failed.\n";
+    } else {
+        msg+="No one was killed.\n";
+    }
     if(data.destroyed) msg+=data.destroyed+" was destroyed!\n";
     if(data.lost?.length) msg+="Lost in forest: "+data.lost.join(", ")+"\n";
     alert(msg);
+});
+
+socket.on("seerInvestigationResult",data=>{
+    let msg=`Seer result: ${data.foundAny ? "Yes" : "No"}`;
+    if(data.targets?.length) msg += ` (targets: ${data.targets.join(", ")})`;
+    updateGameActionStatus(msg);
 });
 function voteTimer(value){socket.emit("submitVote",{type:"dayTime",value});}
 function submitNominationLimitVote(){
@@ -56,7 +521,18 @@ socket.on("loginSuccess",data=>{
 });
 socket.on("lobbySettingsUpdated",data=>{
     document.getElementById("buildingCount").value=data.buildingCount;
-    document.getElementById("dayTime").value=data.initialDayTime;
+    if(document.getElementById("nightTime")) document.getElementById("nightTime").value=(data.initialNightTime||1);
+    if(document.getElementById('advanceThresholdType') && typeof data.advanceThresholdType !== 'undefined'){
+        document.getElementById('advanceThresholdType').value = data.advanceThresholdType;
+        document.getElementById('advanceThresholdValue').value = data.advanceThresholdValue || (data.advanceThresholdType === 'percent' ? 75 : 1);
+        phaseAdvanceType = data.advanceThresholdType;
+        phaseAdvanceValue = data.advanceThresholdValue || phaseAdvanceValue;
+    }
+    if(typeof data.hostCanBypass !== 'undefined' && document.getElementById('hostCanBypass')){
+        document.getElementById('hostCanBypass').checked = !!data.hostCanBypass;
+        hostCanBypass = !!data.hostCanBypass;
+    }
+    renderReadyControl();
 });
 socket.on("lobbies",lobbies=>{
     let list=document.getElementById("lobbies");
@@ -67,29 +543,134 @@ socket.on("lobbies",lobbies=>{
         list.appendChild(li);
     });
     let lobby=lobbies.find(x=>x.id===currentLobby);
-    let isHost=lobby&&lobby.host===currentUsername;
-    document.getElementById("hostSetup").style.display=isHost?"block":"none";
-    document.getElementById("startGameBtn").style.display=isHost?"block":"block";
+    isHost=lobby&&lobby.host===currentUsername;
+    updateGameUI();
 });
 socket.on("gameError",msg=>alert(msg));
 function updateSettings(){
     socket.emit("updateLobbySettings",{
         buildingCount:document.getElementById("buildingCount").value,
-        initialDayTime:document.getElementById("dayTime").value
+        initialNightTime: document.getElementById("nightTime") ? document.getElementById("nightTime").value : 1,
+        advanceThresholdType: document.getElementById('advanceThresholdType') ? document.getElementById('advanceThresholdType').value : 'percent',
+        advanceThresholdValue: document.getElementById('advanceThresholdValue') ? document.getElementById('advanceThresholdValue').value : 75,
+        hostCanBypass: document.getElementById('hostCanBypass') ? document.getElementById('hostCanBypass').checked : false
     });
 }
 document.getElementById("buildingCount").addEventListener("change",updateSettings);
-document.getElementById("dayTime").addEventListener("change",updateSettings);
+if(document.getElementById("nightTime")) document.getElementById("nightTime").addEventListener("change",updateSettings);
 function startGame(){socket.emit("startGame");}
 document.getElementById("startGameBtn").addEventListener("click",startGame);
 socket.on("gameStarted",data=>{
     console.log("Game started:",data);
-    let role=document.getElementById("playerRole");
-    if(!role){
-        role=document.createElement("div");
-        role.id="playerRole";
-        document.body.appendChild(role);
+    currentGameStarted=true;
+    currentPhase=data.phase;
+    phaseDuration=data.phaseDuration||0;
+    gameBuildings=data.buildings||{};
+    gamePlayers=data.players||[];
+    // timers removed - phase advancement will be via submissions
+    updateGameUI();
+    renderBuildingChooser();
+    renderAbilityControls();
+    renderVoteControls();
+    renderReadyControl();
+    renderTimerControls();
+    updateGameActionStatus(`Game started. ${currentPhase} phase.`);
+});
+
+socket.on("yourRole",role=>{
+    console.log("YOUR ROLE RECEIVED:",role);
+    myRole=role;
+    currentRole=role;
+    let roleEl=document.getElementById("playerRole");
+    if(!roleEl){
+        roleEl=document.createElement("div");
+        roleEl.id="playerRole";
+        document.body.appendChild(roleEl);
     }
-    console.log("ROLE DISPLAY:",data.role);
-    role.innerHTML="Your role: "+data.role;
+    roleEl.innerHTML="Your role: "+role;
+    renderAbilityControls();
+    renderVoteControls();
+    renderTimerControls();
+});
+socket.on("locationUpdated",data=>{
+    console.log("Location updated:",data);
+    if(data.buildings) gameBuildings=data.buildings;
+    renderBuildingChooser();
+    updateGameActionStatus(`${data.username} moved to ${data.building}`);
+});
+socket.on("moveSuccess",data=>{
+    updateGameActionStatus(`Moved to ${data.building}`);
+});
+socket.on("solderProtectionSubmitted",data=>{
+    updateGameActionStatus(`Protected ${data.target}`);
+});
+socket.on("werewolfKillSubmitted",data=>{
+    updateGameActionStatus(`Kill submitted: ${data.target}`);
+});
+socket.on("seerInvestigationSubmitted",data=>{
+    updateGameActionStatus(`Investigation submitted: ${data.targets.join(", ")}`);
+});
+socket.on("executionVoteUpdate",data=>{
+    updateGameActionStatus(`Vote recorded for ${data.target} (${JSON.stringify(data.counts)})`);
+});
+socket.on("executionResult",data=>{
+    updateGameActionStatus(`${data.target} has been executed.`);
+});
+socket.on("nightVoteUpdate",data=>{
+    updateGameActionStatus(`Night vote update (${data.type}): ${JSON.stringify(data.counts)}`);
+});
+socket.on("phaseChanged",data=>{
+    currentPhase = data.phase;
+    phaseDuration = data.phaseDuration || 0;
+    timerPaused = false;
+    gamePlayers = data.players || gamePlayers;
+    gameBuildings = data.buildings || gameBuildings;
+    // timers removed
+    updateGameUI();
+    renderBuildingChooser();
+    renderAbilityControls();
+    renderVoteControls();
+    renderTimerControls();
+    renderReadyControl();
+    updateGameActionStatus(`Phase changed to ${currentPhase}.`);
+});
+socket.on("timerUsed",data=>{
+    if(data.phase === currentPhase){
+        phaseDuration = data.phaseDuration || phaseDuration;
+        phaseRemainingSeconds = data.phaseTimeRemaining || phaseDuration || phaseRemainingSeconds;
+        // timers removed
+        updateGameUI();
+        updateGameActionStatus(`${data.username} added ${data.addedSeconds}s, remaining phase time is now ${data.phaseTimeRemaining}s.`);
+    }
+});
+socket.on("timerPaused",data=>{
+    if(data.phase === currentPhase){
+        timerPaused=data.paused;
+        phaseDuration = data.phaseDuration || phaseDuration;
+        phaseRemainingSeconds = data.phaseTimeRemaining || phaseRemainingSeconds;
+        if(data.paused){
+            // timers removed
+        } else {
+            // timers removed
+        }
+        updateGameUI();
+        renderTimerControls();
+        updateGameActionStatus(data.paused ? "Timer paused." : "Timer resumed.");
+    }
+});
+socket.on("timerAdjusted",data=>{
+    if(data.phase === currentPhase){
+        phaseDuration = data.phaseDuration || phaseDuration;
+        phaseRemainingSeconds = data.phaseTimeRemaining || phaseRemainingSeconds;
+        // timers removed
+        updateGameUI();
+        updateGameActionStatus(`Timer adjusted by ${data.amount}s, remaining time is ${data.phaseTimeRemaining}s.`);
+    }
+    else {
+        // pending adjustment for non-active phase
+        updateGameActionStatus(`Pending ${data.phase} timer adjusted by ${data.amount}s (pending ${data.pending||0}s).`);
+    }
+});
+socket.on("actionError",msg=>{
+    updateGameActionStatus(`Action error: ${msg}`);
 });

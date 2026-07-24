@@ -1,6 +1,6 @@
 console.log("game.JS LOADED");
 let games={};
-const ROLES={WEREWOLF:"Werewolf",SEER:"Seer",SOLDIER:"Soldier",VILLAGER:"Villager"};
+const ROLES={WEREWOLF:"Werewolf",SEER:"Seer",SOLDER:"Soldier",VILLAGER:"Villager"};
 const BUILDINGS={FOREST:"Forest",ARMORY:"Armory",BAKERY:"Bakery",CHAPEL:"Chapel",DOCKYARD:"Dockyard",ABBEY:"Abbey",BLACKSMITH:"Blacksmith",BARRACKS:"Barracks",DUNGEON:"Dungeon",DAM:"Dam"};
 const PHASES={DAY:"Day",NIGHT:"Night"};
 function getPowerRoleCount(n){
@@ -30,12 +30,12 @@ function getRoleConfig(n){
     const powerRoles = getPowerRoleCount(n);
     return {werewolves,powerRoles,villagers: n - werewolves - powerRoles};
 }
-function initializeGame(lobbyId,players,buildingCount=5,initialNightTime=1){
+function initializeGame(lobbyId,players,buildingCount=5){
     let config=getRoleConfig(players.length);
     if(!config) return null;
     let rolePool=[];
     for(let i=0;i<config.werewolves;i++) rolePool.push(ROLES.WEREWOLF);
-    [ROLES.SEER,ROLES.SOLDIER].sort(()=>Math.random()-0.5).slice(0,config.powerRoles).forEach(r=>rolePool.push(r));
+    [ROLES.SEER,ROLES.SOLDER].sort(()=>Math.random()-0.5).slice(0,config.powerRoles).forEach(r=>rolePool.push(r));
     for(let i=0;i<config.villagers;i++) rolePool.push(ROLES.VILLAGER);
     rolePool.sort(()=>Math.random()-0.5);
     let gamePlayers={};
@@ -43,34 +43,40 @@ function initializeGame(lobbyId,players,buildingCount=5,initialNightTime=1){
     console.log("GAME PLAYERS:",gamePlayers);
     let possible=[BUILDINGS.ARMORY,BUILDINGS.BAKERY,BUILDINGS.CHAPEL,BUILDINGS.DOCKYARD,BUILDINGS.ABBEY,BUILDINGS.BLACKSMITH,BUILDINGS.BARRACKS,BUILDINGS.DUNGEON,BUILDINGS.DAM].sort(()=>Math.random()-0.5);
     let selected=[BUILDINGS.FOREST,...possible.slice(0,Math.max(0,buildingCount-1))];
-    games[lobbyId]={lobbyId,phase:PHASES.NIGHT,day:0,players:gamePlayers,buildings:{},destroyedBuildings:[],werewolfKills:[],seerInvestigation:null,soldierProtection:null,voting:{nominations:[],executionVotes:{},activeNomination:null,nominationTimer:null},phaseTimer:null,phaseStartTime:null,phaseDuration:initialNightTime*60,phasePaused:false,phasePausedAt:null};
+    games[lobbyId]={lobbyId,phase:PHASES.NIGHT,day:0,players:gamePlayers,buildings:{},destroyedBuildings:[],werewolfKills:[],seerInvestigation:null,solderProtection:null,lastSolderProtection:null,voting:{nominations:[],executionVotes:{},activeNomination:null,nominationTimer:null},nightVotes:{nominationLimit:{}}};
     selected.forEach(b=>{games[lobbyId].buildings[b]={name:b,players:[],destroyed:false};});
     return games[lobbyId];
 }
 const getGame=id=>games[id];
 const resetGame=id=>delete games[id];
 const resetAllGames=()=>games={};
-function advancePhase(id,dayTime=3,nightTime=1){
+function advancePhase(id){
     let g=games[id];
     if(!g) return null;
-    if(g.phaseTimer){clearTimeout(g.phaseTimer);g.phaseTimer=null;}
-    g.phasePaused=false;g.phasePausedAt=null;
-    if(g.phase===PHASES.NIGHT){g.phase=PHASES.DAY;g.day++;g.phaseDuration=dayTime*60;}
-    else{g.phase=PHASES.NIGHT;g.phaseDuration=nightTime*60;}
-    g.phaseStartTime=Date.now();
+    if(g.phase===PHASES.NIGHT){g.phase=PHASES.DAY;g.day++;}
+    else{g.phase=PHASES.NIGHT;}
     return g.phase;
 }
 function processNightActions(id){
     let g=games[id];
     if(!g) return null;
-    let result={killed:null,protected:null,investigated:null,lost:[]};
+    let result={killed:null,protected:null,investigated:null,lost:[],attackFailed:false};
     if(g.werewolfKills.length){
         let kills=[...new Set(g.werewolfKills)];
-        result.killed=kills[Math.floor(Math.random()*kills.length)];
+        let validKills=kills.filter(target=>canWerewolfAttackTarget(g,target));
+        result.attackFailed = kills.length > 0 && validKills.length === 0;
+        if(validKills.length){
+            result.killed=validKills[Math.floor(Math.random()*validKills.length)];
+        }
     }
-    if(g.soldierProtection){
-        result.protected=g.soldierProtection;
+    if(g.solderProtection){
+        result.protected=g.solderProtection;
+        result.protector = g.solderProtector || null;
         if(g.players[result.protected]) g.players[result.protected].protected=true;
+        g.lastSolderProtection=g.solderProtection;
+        g.lastSolderProtector=g.solderProtector || null;
+    } else {
+        g.lastSolderProtection=null;
     }
     if(g.seerInvestigation){
         result.investigated=g.seerInvestigation.map(t=>{
@@ -84,8 +90,16 @@ function processNightActions(id){
         else result.killed=null;
     }
     Object.values(g.players).forEach(p=>p.protected=false);
-    g.werewolfKills=[];g.soldierProtection=null;g.seerInvestigation=null;
+    g.werewolfKills=[];
+    g.solderProtection=null;
+    g.solderProtector=null;
+    g.seerInvestigation=null;
     return result;
+}
+function canWerewolfAttackTarget(game,target){
+    let targetPlayer=game.players[target];
+    if(!targetPlayer || !targetPlayer.alive || !targetPlayer.location) return false;
+    return Object.values(game.players).some(p=>p.alive && p.role===ROLES.WEREWOLF && p.location===targetPlayer.location);
 }
 function processExecutionVotes(id){
     let g=games[id];
@@ -117,9 +131,9 @@ function checkWinCondition(lobbyId){
     if(!game) return null;
     let alive=Object.values(game.players).filter(player=>player.alive);
     let wolves=alive.filter(player=>player.role===ROLES.WEREWOLF);
-    let villagers=alive.filter(player=>player.role!==ROLES.WEREWOLF);
+    let good=alive.filter(player=>player.role!==ROLES.WEREWOLF);
     if(wolves.length===0) return "villagers";
-    if(wolves.length>=villagers.length) return "werewolves";
+    if(wolves.length>=good.length) return "werewolves";
     return null;
 }
 function setPlayerLocation(lobbyId,username,building){
@@ -139,13 +153,13 @@ function setPlayerLocation(lobbyId,username,building){
 }
 function canKill(lobbyId,wolf,target){
     let game=games[lobbyId];
-        if(!game)
+    if(!game)
         return false;
     let wolfPlayer=game.players[wolf];
     let targetPlayer=game.players[target];
-    if(!wolfPlayer||!targetPlayer)
+    if(!wolfPlayer||!targetPlayer||!wolfPlayer.location||!targetPlayer.location)
         return false;
-    return wolfPlayer.location===targetPlayer.location;
+    return wolfPlayer.alive && targetPlayer.alive && wolfPlayer.location===targetPlayer.location;
 }
 function getAlivePlayers(lobbyId){
     let game=games[lobbyId];

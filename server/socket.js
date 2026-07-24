@@ -25,18 +25,27 @@ module.exports = function(io){
             socket.emit("gameCreated", id);
             io.emit("lobbies", players.getLobbies());
         });
-        socket.on("chat", msg=>chat.send(socket, io, msg));
+        // Chat is not currently implemented; ignore chat events to prevent server errors.
+        socket.on("chat", msg=>{
+            console.log("Chat event received but not implemented:", msg);
+        });
         socket.on("disconnect", ()=>{
             console.log("Disconnected:", socket.id);
-            players.disconnect(socket, io);});
-    socket.on("startGame",()=>{let player=players.getPlayer(socket.id);let result=players.startGame(player.lobbyId,player.username,io);if(!result.success)socket.emit("gameError",result.message);});
-    socket.on("yourRole",role=>{
-    myRole=role;
-    let el=document.getElementById("playerRole");
-    if(el){
-        el.innerHTML="Your role: "+role;
-        el.style.display="block";
-    }
-});
-});
+            players.disconnect(socket, io);
+        });
+        socket.on("startGame",()=>{
+            let player=players.getPlayer(socket.id);
+            let result=players.startGame(player.lobbyId,player.username,io);
+            if(!result.success) socket.emit("gameError",result.message);
+        });
+        socket.on("moveToBuilding",building=>players.movePlayer(socket,building,io));
+        socket.on("werewolfKill",target=>players.submitWerewolfKill(socket,target,io));
+        socket.on("seerInvestigate",targets=>players.submitSeerInvestigation(socket,targets,io));
+        socket.on("soldierProtect",target=>players.submitSoldierProtection(socket,target,io));
+        socket.on("nightVoteDayTime",value=>players.submitNightDayTimeVote(socket,value,io));
+        socket.on("nightVoteNominationLimit",value=>players.submitNightNominationLimitVote(socket,value,io));
+        socket.on("executionVote",target=>players.submitExecutionVote(socket,target,io));
+        socket.on("submitPhaseReady",()=>players.submitPhaseReady(socket,io));
+        socket.on("forceAdvancePhase",()=>players.forceAdvancePhase(socket,io));
+    });
 };

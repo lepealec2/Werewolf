@@ -25,6 +25,15 @@ body{
 </head>
 <body>
 <h1>🐺 Werewords</h1>
+<p id="version"></p>
+
+<script>
+  const now = new Date();
+  document.getElementById("version").textContent =
+    "Version: 1.0.0 | Loaded: " + now.toLocaleString();
+</script>
+
+
 <button onclick="testLogin()">
 Login
 </button>
@@ -55,9 +64,6 @@ Create Lobby
 <button id="leaveLobbyBtn" onclick="leaveLobby()" style="display:none;">
 Leave Current Lobby
 </button>
-<button onclick="removeAllPlayers()">
-Remove All Players
-</button>
 
 <div id="hostSetup" style="display:none;">
 
@@ -75,17 +81,39 @@ Remove All Players
 
 <br><br>
 
-<label>Initial Day Time</label>
-<select id="dayTime">
-    <option value="1">1 minute</option>
-    <option value="3" selected>3 minutes</option>
+<!-- Initial Day Time removed from host controls -->
+<label>Initial Night Time</label>
+<select id="nightTime">
+    <option value="1" selected>1 minute</option>
+    <option value="3">3 minutes</option>
     <option value="5">5 minutes</option>
     <option value="10">10 minutes</option>
 </select>
-<div id="gameStatus"></div>
-<div id="playerRole"></div>
 <br><br>
-
+<label>Phase Advance Threshold</label>
+<select id="advanceThresholdType">
+    <option value="percent" selected>Percentage of living players</option>
+    <option value="count">Number of players</option>
+</select>
+<input id="advanceThresholdValue" type="number" min="1" value="75" style="width:80px; margin-left:8px;"> 
+<div style="font-size:0.85em;color:#555;margin-top:6px;">If Percent selected, value is percent (1-100). If Count selected, value is number of living players required.</div>
+<br><br>
+<label><input type="checkbox" id="hostCanBypass"> Allow host to force advance phases</label>
+<br><br>
+</div>
+<div id="gameStatus"></div>
+<div id="phaseStatus"></div>
+<div id="timerDisplay"></div>
+<div id="playerRole"></div>
+<div id="gameControls" style="display:none;">
+    <h3>Game Controls</h3>
+    <div id="buildingChooser"></div>
+    <div id="abilityControls"></div>
+    <div id="nominationControls"></div>
+    <div id="voteControls"></div>
+    <div id="readyControl"></div>
+    <div id="timerControls"></div>
+    <div id="gameActionStatus"></div>
 </div>
 <button id="startGameBtn" onclick="startGame()">Start Game</button>
 
