@@ -24,7 +24,7 @@ body{
 </style>
 </head>
 <body>
-<h1>🐺 Werewords</h1>
+<h1>🐺 Werewolf</h1>
 <p id="version"></p>
 
 <script>
@@ -90,18 +90,12 @@ Leave Current Lobby
     <option value="10">10 minutes</option>
 </select>
 <br><br>
-<label>Phase Advance Threshold</label>
-<select id="advanceThresholdType" onchange="toggleThresholdInput()">
-    <option value="percent" selected>Percentage of living players</option>
-    <option value="count">Number of players</option>
+<label>Phase Advance Threshold (Percent)</label>
+<select id="advanceThresholdValue" onchange="updateSettings()">
+    <option value="25">25%</option>
+    <option value="50" selected>50%</option>
+    <option value="75">75%</option>
 </select>
-
-<input id="percentInput" type="number" min="1" max="100" value="75"
-       style="width:80px; margin-left:8px;">
-
-<input id="countInput" type="number" min="1"
-       style="width:80px; margin-left:8px; display:none;">
-
 <div style="font-size:0.85em;color:#555;margin-top:6px;">
   Percent = % of living players. Count = exact number required.
 </div>
@@ -123,7 +117,7 @@ Leave Current Lobby
     <div id="nominationControls"></div>
     <div id="voteControls"></div>
     <div id="readyControl"></div>
-/div>
+</div>
 <button id="startGameBtn" onclick="startGame()">Start Game</button>
 
 

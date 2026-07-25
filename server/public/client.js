@@ -1,6 +1,6 @@
 let currentUsername=null,currentLobby=null,myRole=null,currentRole=null,currentPhase=null,phaseDuration=0,currentGameStarted=false,gameBuildings={},gamePlayers=[],isHost=false,phaseRemainingSeconds=0,phaseClockInterval=null;
 let phaseReadyCount=0, phaseReadyRequired=0, readySubmitted=false;
-let phaseAdvanceType='percent', phaseAdvanceValue=75;
+let phaseAdvanceType='percent', phaseAdvanceValue=50;
 let hostCanBypass=false;
 console.log("client.JS LOADED");
 const socket=io();
@@ -130,14 +130,15 @@ function renderBuildingChooser(){
         let label=building + (info.destroyed?" (destroyed)":"") + playerList;
         options+=`<option value="${building}" ${info.destroyed?"disabled":""}>${label}</option>`;
     });
-    container.innerHTML=`<h4>Move to a building</h4>
+    container.innerHTML=`<h4>Move to a Location</h4>
     <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
-        Choose your Night location.<br>
+    <br>
         Under the cover of darkness, Werewolves choose a target—but their attack only succeeds if:<br>
         1. A Werewolf is lurking in the same location as the target, OR<br>
         2. The target hides in a location that does not have a majority of total alive players, ties are not safe.<br>
         As dawn approaches, one building is destroyed each night… until only one remains.
     </div>
+    <br>
         <select id="buildingSelect" onchange="moveToBuilding()">${options}</select>`;
 }
 function renderAbilityControls(){
@@ -151,7 +152,6 @@ function renderAbilityControls(){
     if(currentRole==="Werewolf"){
         let options=`<option value="random" selected>🎲 Random</option><option value="none">🚫 No one</option>` 
             + otherPlayers.map(p=>`<option value="${p.username}">${p.username}</option>`).join("");
-
         container.innerHTML=`
             <h4>🐺 Werewolf Attack</h4>
             <div style="font-size:0.85em; margin-top:0.25em; color:#555;">
@@ -240,30 +240,59 @@ function renderAbilityControls(){
 }}
 
 function renderVoteControls(){
+
     let container=document.getElementById("voteControls");
     if(!container) return;
+
     if(!currentGameStarted){
         container.innerHTML="";
         return;
     }
-    if(currentPhase==="Night"){
+
+    let aliveUsers = gamePlayers.filter(u=>u.alive);
+
+    let options = aliveUsers
+        .map(p=>`<option value="${p.username}">${p.username}</option>`)
+        .join("");
+
+
+    // Only voting happens during Day
+    if(currentPhase !== "Day"){
+        container.innerHTML="";
+        return;
+    }
+
+
+    // No nomination yet -> nominate
+    if(!nominatedPlayer){
+
         container.innerHTML=`
-            <div>
-                <label>Nomination limit:</label>
-                <select id="nominationLimitVoteControl" onchange="submitNominationLimitVote()">
-                    <option value="random">🎲 Random</option>
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                </select>
-            </div>`;
-    } else {
-        let aliveUsers=gamePlayers.filter(u=>u.alive);
-        let options=aliveUsers.map(p=>`<option value="${p.username}">${p.username}</option>`).join("");
-        container.innerHTML=`<h4>Execution vote</h4>
-            <select id="executionTarget" onchange="submitExecutionVote()">${options}</select>`;
+            <h4>Nomination Vote</h4>
+            <select id="nominationTarget" onchange="submitNominationVote(this.value)">
+                <option value="">Select player</option>
+                ${options}
+            </select>
+            <p>Needs 2 votes (12 seconds)</p>
+        `;
+
+    }
+
+    // Someone was nominated -> execution
+    else {
+
+        container.innerHTML=`
+            <h4>Execution Vote</h4>
+            <p>Nominated: ${nominatedPlayer}</p>
+
+            <select id="executionTarget" onchange="submitExecutionVote(this.value)">
+                <option value="">Select vote</option>
+                <option value="${nominatedPlayer}">
+                    Execute ${nominatedPlayer}
+                </option>
+            </select>
+
+            <p>Requires 50% of living players</p>
+        `;
     }
 }
 
@@ -274,16 +303,15 @@ function computeReadyRequirement(){
     let alive = gamePlayers.filter(p=>p.alive).length;
     let required = phaseReadyRequired || 0;
     if(!required){
-        let value = phaseAdvanceValue || 75;
+        let value = phaseAdvanceValue || 50;
         if(phaseAdvanceType === 'count'){
             required = Math.min(Math.max(1, Number(value) || 1), alive);
         } else {
-            required = Math.max(1, Math.ceil(alive * ((Number(value) || 75) / 100)));
+            required = Math.max(1, Math.ceil(alive * ((Number(value) || 50) / 100)));
         }
     }
     return Math.min(required, Math.max(1, alive));
 }
-
 function renderReadyControl(){
     let container = document.getElementById('readyControl');
     if(!container) return;
@@ -297,21 +325,16 @@ function renderReadyControl(){
     console.log("===renderReadyControl:===")
     console.log("ready:",readyCount)
     let required = computeReadyRequirement();
-
     let readyPercent = alive 
         ? Math.round((readyCount / alive) * 100) 
         : 0;
-
     let thresholdText = phaseAdvanceType === 'percent'
-        ? `${phaseAdvanceValue ?? 75}% of living players`
+        ? `${phaseAdvanceValue ?? 50}% of living players`
         : `${phaseAdvanceValue ?? 1} players`;
-
-    let statusText = `Ready: ${readyCount}/${required} (${readyPercent}% of living players)`;
-
+    let statusText = `Ready: ${readyCount} Required: ${required} (50% of living players)`;
     let btnHtml = readySubmitted
         ? `<div style="margin-top:8px; font-weight:bold;">Ready submitted</div>`
         : `<button onclick="submitReady()">I'm Ready</button>`;
-
     container.innerHTML = `
         <h4>Advance by Ready</h4>
         <div style="font-size:0.9em;color:#555;margin-bottom:6px;">
@@ -334,6 +357,7 @@ function submitReady(){
     renderReadyControl();
     console.log("submitReady ended")
 }
+socket.on('phaseReadyAccepted', () => {readySubmitted = true;renderReadyControl();});
 function moveToBuilding(){
     let select=document.getElementById("buildingSelect");
     if(!select) return;
@@ -405,10 +429,6 @@ socket.on("seerInvestigationResult",data=>{
     if(data.targets?.length) msg += ` (targets: ${data.targets.join(", ")})`;
     updateGameActionStatus(msg);
 });
-function submitNominationLimitVote(){
-    let value=document.getElementById("nominationLimitVote").value;
-    socket.emit("submitVote",{type:"nominationLimit",value:parseInt(value)});
-}
 function testLogin(){console.log("BUTTON WORKS");}
 function login(){
     console.log("LOGIN BUTTON CLICKED");
@@ -445,7 +465,7 @@ socket.on("lobbySettingsUpdated",data=>{
     if(document.getElementById("nightTime")) document.getElementById("nightTime").value=(data.initialNightTime||1);
     if(document.getElementById('advanceThresholdType') && typeof data.advanceThresholdType !== 'undefined'){
         document.getElementById('advanceThresholdType').value = data.advanceThresholdType;
-        document.getElementById('advanceThresholdValue').value = data.advanceThresholdValue || (data.advanceThresholdType === 'percent' ? 75 : 1);
+        document.getElementById('advanceThresholdValue').value = data.advanceThresholdValue || (data.advanceThresholdType === 'percent' ? 50 : 1);
         phaseAdvanceType = data.advanceThresholdType;
         phaseAdvanceValue = data.advanceThresholdValue || phaseAdvanceValue;
     }
@@ -470,13 +490,20 @@ socket.on("lobbies",lobbies=>{
 socket.on("gameError",msg=>alert(msg));
 function updateSettings(){
     socket.emit("updateLobbySettings",{
-        buildingCount:document.getElementById("buildingCount").value,
-        initialNightTime: document.getElementById("nightTime") ? document.getElementById("nightTime").value : 1,
-        advanceThresholdType: document.getElementById('advanceThresholdType') ? document.getElementById('advanceThresholdType').value : 'percent',
-        advanceThresholdValue: document.getElementById('advanceThresholdValue') ? document.getElementById('advanceThresholdValue').value : 75,
-        hostCanBypass: document.getElementById('hostCanBypass') ? document.getElementById('hostCanBypass').checked : false
+        buildingCount: document.getElementById("buildingCount").value,
+        initialNightTime: document.getElementById("nightTime") 
+            ? document.getElementById("nightTime").value 
+            : 1,
+
+        advanceThresholdType: "percent",
+        advanceThresholdValue: document.getElementById("advanceThresholdValue").value,
+
+        hostCanBypass: document.getElementById('hostCanBypass')
+            ? document.getElementById('hostCanBypass').checked 
+            : false
     });
 }
+
 document.getElementById("buildingCount").addEventListener("change",updateSettings);
 if(document.getElementById("nightTime")) document.getElementById("nightTime").addEventListener("change",updateSettings);
 function startGame(){socket.emit("startGame");}
@@ -493,6 +520,7 @@ socket.on("gameStarted",data=>{
     renderAbilityControls();
     renderVoteControls();
     renderReadyControl();
+    renderPlayerList();  
     updateGameActionStatus(`Game started. ${currentPhase} phase.`);
 });
 
@@ -537,11 +565,14 @@ socket.on("executionResult",data=>{
 socket.on("nightVoteUpdate",data=>{
     updateGameActionStatus(`Night vote update (${data.type}): ${JSON.stringify(data.counts)}`);
 });
-socket.on("phaseChanged",data=>{
+socket.on("phaseChanged", data=>{
     currentPhase = data.phase;
     phaseDuration = data.phaseDuration || 0;
     gamePlayers = data.players || gamePlayers;
     gameBuildings = data.buildings || gameBuildings;
+    readySubmitted = false;
+    phaseReadyCount = 0;
+    phaseReadyRequired = 0;
     updateGameUI();
     renderBuildingChooser();
     renderAbilityControls();
@@ -554,15 +585,10 @@ socket.on("actionError",msg=>{
 });
 function toggleThresholdInput() {
     const type = document.getElementById("advanceThresholdType").value;
-    document.getElementById("percentInput").style.display =
-        type === "percent" ? "inline-block" : "none";
-    document.getElementById("countInput").style.display =
-        type === "count" ? "inline-block" : "none";
 }
 
 function getRequiredSubmissions(aliveCount) {
     const type = document.getElementById("advanceThresholdType").value;
-
     if (type === "percent") {
         const percent = parseInt(document.getElementById("percentInput").value, 10) || 0;
         return Math.ceil((percent / 100) * aliveCount);
@@ -573,10 +599,46 @@ function getRequiredSubmissions(aliveCount) {
         return Math.min(count, aliveCount);
     }
 }
-
 socket.on('phaseReadyUpdate', data => {
     console.log("PHASE READY UPDATE RECEIVED:", data);
     phaseReadyCount = data.count;
     phaseReadyRequired = data.required;
     renderReadyControl();
 });
+
+function renderPlayerList(){
+    let container = document.getElementById("playerList");
+    if(!container) return;
+    if(!gamePlayers.length){
+        container.innerHTML = "";
+        return;
+    }
+    let alivePlayers = gamePlayers.filter(p => p.alive);
+    let deadPlayers = gamePlayers.filter(p => !p.alive);
+
+    container.innerHTML = `
+        <h4>Players</h4>
+
+        <div>
+            <b>Alive (${alivePlayers.length})</b>
+            <ul>
+                ${
+                    alivePlayers.map(p =>
+                        `<li style="color:green;">🟢 ${p.username}</li>`
+                    ).join("")
+                }
+            </ul>
+        </div>
+
+        <div>
+            <b>Dead (${deadPlayers.length})</b>
+            <ul>
+                ${
+                    deadPlayers.map(p =>
+                        `<li style="color:red;">💀 ${p.username}</li>`
+                    ).join("")
+                }
+            </ul>
+        </div>
+    `;
+}

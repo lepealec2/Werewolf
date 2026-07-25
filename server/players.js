@@ -108,7 +108,7 @@ function createGameId(lobbyName,creator){
         initialNightTime:1,
         // advanceThresholdType: 'percent'|'count', advanceThresholdValue: number
         advanceThresholdType: 'percent',
-        advanceThresholdValue: 75,
+        advanceThresholdValue: 50,
         hostCanBypass: false,
         settings:{
             discussionTime:3,
@@ -165,6 +165,7 @@ function joinLobby(socket,lobbyId,io){
         }
     }
     let lobby=games[lobbyId];
+    socket.join(lobbyId);
     player.lobbyId=lobbyId;
     if(!lobby.players.includes(player.username)){
         lobby.players.push(player.username);
@@ -315,71 +316,221 @@ function resolveVoteChoice(votes, allowedValues, defaultValue){
     if(chosen === 'random') return pickRandomValue(allowedValues);
     return Number(chosen);
 }
-function processPhaseEnd(lobbyId,io){
+function processPhaseEnd(lobbyId, io){
     let lobby = games[lobbyId];
     if(!lobby || !lobby.gameInstance) return;
+
     let game = lobby.gameInstance;
+
+    console.log("=== PROCESS PHASE END ===");
+    console.log("CURRENT PHASE:", game.phase);
+
+    // NIGHT -> DAY
     if(game.phase === gameModule.PHASES.NIGHT){
+
+        console.log("Processing night actions...");
+
+        // Resolve werewolf kill, soldier protection, seer, etc.
         let results = gameModule.processNightActions(lobbyId);
+
+        console.log("NIGHT RESULTS:", results);
+
+        console.log(
+            "ALIVE AFTER NIGHT:",
+            Object.values(game.players)
+                .filter(p => p.alive)
+                .map(p => p.username)
+        );
+
+        // Destroy one building
         let destroyed = gameModule.processBuildingDestruction(lobbyId);
-        io.to(lobbyId).emit("nightResults",{...results, destroyed});
+
+        console.log("DESTROYED BUILDING:", destroyed);
+
+        // Tell clients what happened
+        io.to(lobbyId).emit("nightResults", {
+            ...results,
+            destroyed
+        });
+
+
+        // Check winner after deaths
         let winner = gameModule.checkWinCondition(lobbyId);
+
         if(winner){
             io.to(lobbyId).emit("gameOver",{winner});
             return;
         }
-        // If no night votes, pick random defaults
-        let nextDayMinutes = resolveVoteChoice(game.nightVotes?.dayTime || {}, [1,3,5,10], pickRandomValue([1,3,5,10]));
-        let nextNominationLimit = resolveVoteChoice(game.nightVotes?.nominationLimit || {}, [1,2,3,4,5], pickRandomValue([1,2,3,4,5]));
-        game.nightVotes = {dayTime:{},nominationLimit:{}};
-        let phase = gameModule.advancePhase(lobbyId,nextDayMinutes,lobby.initialNightTime);
+
+
+        // Resolve night voting settings
+        let nextDayMinutes = resolveVoteChoice(
+            game.nightVotes?.dayTime || {},
+            [1,3,5,10],
+            pickRandomValue([1,3,5,10])
+        );
+
+        let nextNominationLimit = resolveVoteChoice(
+            game.nightVotes?.nominationLimit || {},
+            [1,2,3,4,5],
+            pickRandomValue([1,2,3,4,5])
+        );
+
+
+        game.nightVotes = {
+            dayTime:{},
+            nominationLimit:{}
+        };
+
+
+        // Move to DAY
+        let phase = gameModule.advancePhase(
+            lobbyId,
+            nextDayMinutes,
+            lobby.initialNightTime
+        );
+
+
         resetPlayerLocations(game);
+
+
         io.to(lobbyId).emit("phaseChanged",{
             phase,
             day:game.day,
-            players:Object.values(game.players).map(player=>({username:player.username,alive:player.alive,location:player.location})),
+
+            players:Object.values(game.players).map(player=>({
+                username:player.username,
+                alive:player.alive,
+                location:player.location
+            })),
+
             buildings:game.buildings,
-            nextDayTime: nextDayMinutes,
-            nominationLimit: nextNominationLimit
+
+            nextDayTime:nextDayMinutes,
+            nominationLimit:nextNominationLimit
         });
+
+
+        // Reset ready system for new phase
         game.phaseReadySubmissions = new Set();
-        let livingNow = Object.values(game.players).filter(p=>p.alive).length;
-        let typeNow = lobby.advanceThresholdType || 'percent';
-        let valueNow = lobby.advanceThresholdValue || 75;
-        let requiredNow = typeNow === 'percent' ? Math.max(1, Math.ceil(livingNow * (valueNow/100))) : Math.min(Math.max(1, Number(valueNow)||1), livingNow);
-        io.to(lobbyId).emit('phaseReadyUpdate',{count:0, required: requiredNow});
+
+
+        let livingNow = Object.values(game.players)
+            .filter(p=>p.alive)
+            .length;
+
+
+        let typeNow = lobby.advanceThresholdType || "percent";
+        let valueNow = lobby.advanceThresholdValue || 50;
+
+
+        let requiredNow =
+            typeNow === "percent"
+            ? Math.max(1, Math.ceil(livingNow * (valueNow / 100)))
+            : Math.min(
+                Math.max(1, Number(valueNow) || 1),
+                livingNow
+            );
+
+
+        io.to(lobbyId).emit(
+            "phaseReadyUpdate",
+            {
+                count:0,
+                required:requiredNow
+            }
+        );
+
+
+        console.log("Moved to DAY");
         return;
     }
+
+
+
+    // DAY -> NIGHT
+    console.log("Processing day actions...");
+
+
     let executed = gameModule.processExecutionVotes(lobbyId);
+
+
     if(executed){
-        io.to(lobbyId).emit("executionResult",{target:executed});
+        io.to(lobbyId).emit(
+            "executionResult",
+            {
+                target:executed
+            }
+        );
     }
+
+
     let winner = gameModule.checkWinCondition(lobbyId);
+
     if(winner){
         io.to(lobbyId).emit("gameOver",{winner});
         return;
     }
+
+
+
     let assigned = assignRandomLocationsForDay(game);
+
+
     assigned.forEach(a=>{
-        io.to(lobbyId).emit("locationUpdated",{
-            username:a.username,
-            building:a.building,
+
+        io.to(lobbyId).emit(
+            "locationUpdated",
+            {
+                username:a.username,
+                building:a.building,
+                buildings:game.buildings
+            }
+        );
+    });
+    let phase = gameModule.advancePhase(
+        lobbyId,
+        lobby.initialDayTime,
+        lobby.initialNightTime
+    );
+io.to(lobbyId).emit(
+        "phaseChanged",
+        {
+            phase,
+
+            day:game.day,
+
+            players:Object.values(game.players).map(player=>({
+                username:player.username,
+                alive:player.alive,
+                location:player.location
+            })),
+
             buildings:game.buildings
-        });
-    });
-    let phase = gameModule.advancePhase(lobbyId,lobby.initialDayTime,lobby.initialNightTime);
-    io.to(lobbyId).emit("phaseChanged",{
-        phase,
-        day:game.day,
-        players:Object.values(game.players).map(player=>({username:player.username,alive:player.alive,location:player.location})),
-        buildings:game.buildings
-    });
+        }
+    );
+    // Reset ready system
     game.phaseReadySubmissions = new Set();
-    let livingNow = Object.values(game.players).filter(p=>p.alive).length;
-    let typeNow = lobby.advanceThresholdType || 'percent';
-    let valueNow = lobby.advanceThresholdValue || 75;
-    let requiredNow = typeNow === 'percent' ? Math.max(1, Math.ceil(livingNow * (valueNow/100))) : Math.min(Math.max(1, Number(valueNow)||1), livingNow);
-    io.to(lobbyId).emit('phaseReadyUpdate',{count:0, required: requiredNow});
+    let livingNow = Object.values(game.players)
+        .filter(p=>p.alive)
+        .length;
+    let typeNow = lobby.advanceThresholdType || "percent";
+    let valueNow = lobby.advanceThresholdValue || 50;
+    let requiredNow =
+        typeNow === "percent"
+        ? Math.max(1, Math.ceil(livingNow * (valueNow / 100)))
+        : Math.min(
+            Math.max(1, Number(valueNow) || 1),
+            livingNow
+        );
+    io.to(lobbyId).emit(
+        "phaseReadyUpdate",
+        {
+            count:0,
+            required:requiredNow
+        }
+    );
+    console.log("Moved to NIGHT");
 }
 
 function submitNightVote(socket,type,value,io){
@@ -426,7 +577,6 @@ function submitNightDayTimeVote(socket,value,io){
 function submitNightNominationLimitVote(socket,value,io){
     return submitNightVote(socket,"nominationLimit",value,io);
 }
-
 function submitPhaseReady(socket,io){
     let player = players[socket.id];
     if(!player || !player.lobbyId) return;
@@ -439,14 +589,35 @@ function submitPhaseReady(socket,io){
         return;
     }
     game.phaseReadySubmissions.add(player.username);
-    let living = Object.values(game.players).filter(p=>p.alive).length;
-    let type = lobby.advanceThresholdType || 'percent';
-    let value = lobby.advanceThresholdValue || 75;
-    let required = type === 'percent' ? Math.max(1, Math.ceil(living * (value/100))) : Math.min(Math.max(1, Number(value)||1), living);
+    let living = Object.values(game.players)
+        .filter(p=>p.alive).length;
+    let required = Math.max(
+        1,
+        Math.ceil(living * ((lobby.advanceThresholdValue || 50)/100))
+    );
     let count = game.phaseReadySubmissions.size;
-    io.to(player.lobbyId).emit('phaseReadyUpdate',{count, required});
+    io.to(player.lobbyId).emit('phaseReadyUpdate',{
+        count,
+        required
+    });
     if(count >= required){
-        processPhaseEnd(player.lobbyId, io);
+        // force phase advance
+        let nextPhase = gameModule.advancePhase(
+            player.lobbyId,
+            lobby.initialDayTime,
+            lobby.initialNightTime
+        );
+        game.phaseReadySubmissions = new Set();
+        io.to(player.lobbyId).emit("phaseChanged",{
+            phase: nextPhase,
+            day: game.day,
+            players:Object.values(game.players).map(p=>({
+                username:p.username,
+                alive:p.alive,
+                location:p.location
+            })),
+            buildings:game.buildings
+        });
     }
 }
 
@@ -540,12 +711,13 @@ function checkGameStart(lobbyId,io){
     );
 }
 function submitWerewolfKill(socket,target,io){
-    let player=players[socket.id];
+    let player = players[socket.id];
+
     if(!player || !player.lobbyId)
         return;
-    let game =
-        games[player.lobbyId]
-        ?.gameInstance;
+
+    let game = games[player.lobbyId]?.gameInstance;
+
     if(!game){
         socket.emit(
             "actionError",
@@ -553,6 +725,7 @@ function submitWerewolfKill(socket,target,io){
         );
         return;
     }
+
     if(game.phase !== gameModule.PHASES.NIGHT){
         socket.emit(
             "actionError",
@@ -560,53 +733,102 @@ function submitWerewolfKill(socket,target,io){
         );
         return;
     }
-    let wolf =
-        game.players[player.username];
-    if(wolf.role!==gameModule.ROLES.WEREWOLF){
+
+    let wolf = game.players[player.username];
+
+    if(!wolf || wolf.role !== gameModule.ROLES.WEREWOLF){
         socket.emit(
             "actionError",
             "Not werewolf"
         );
         return;
     }
-    if(target==="none"){
-        io.to(player.lobbyId)
-        .emit(
+
+
+    // Skip attack
+    if(target === "none"){
+        console.log("Werewolf skipped attack");
+
+        io.to(player.lobbyId).emit(
             "werewolfKillSubmitted",
             {
                 killer:player.username,
                 target:"none"
             }
         );
+
         return;
     }
-    if(target==="random"){
-        let possible = Object.values(game.players).filter(p=>p.alive && p.username!==player.username);
+
+
+    // Random victim
+    if(target === "random"){
+
+        let possible = Object.values(game.players)
+            .filter(p =>
+                p.alive &&
+                p.username !== player.username
+            );
+
+
         if(!possible.length){
-            socket.emit("actionError","No valid random target");
+            socket.emit(
+                "actionError",
+                "No valid random target"
+            );
             return;
         }
-        target = possible[Math.floor(Math.random()*possible.length)].username;
+
+
+        let chosen = possible[
+            Math.floor(Math.random() * possible.length)
+        ];
+
+
+        target = chosen.username;
+
+
+        console.log(
+            "RANDOM WEREWOLF TARGET:",
+            target
+        );
     }
-    let victim =
-        game.players[target];
-    if(!victim ||
-       !victim.alive){
+
+
+
+    let victim = game.players[target];
+
+
+    if(!victim || !victim.alive){
         socket.emit(
             "actionError",
             "Invalid target"
         );
         return;
     }
+
+
+
+    game.werewolfKills = game.werewolfKills || [];
+
     game.werewolfKills.push(target);
-    io.to(player.lobbyId)
-    .emit(
-        "werewolfKillSubmitted",
-        {
-            killer:player.username,
-            target
-        }
+
+
+    console.log(
+        "WEREWOLF KILL QUEUE:",
+        game.werewolfKills
     );
+
+
+
+    io.to(player.lobbyId)
+        .emit(
+            "werewolfKillSubmitted",
+            {
+                killer:player.username,
+                target
+            }
+        );
 }
 
 function submitSeerInvestigation(socket,targets,io){
@@ -705,35 +927,14 @@ function submitSeerInvestigation(socket,targets,io){
     socket.emit("seerInvestigationSubmitted",{targets:resolved});
     socket.emit("seerInvestigationResult",{targets:resolved,foundAny});
 }
-function submitExecutionVote(socket,target,io){
-    let player=players[socket.id];
-    if(!player || !player.lobbyId)
-        return;
-    let game=games[player.lobbyId]?.gameInstance;
-    if(!game){
-        socket.emit("actionError","Game not started");
-        return;
-    }
-    if(!game.players[target] || !game.players[target].alive){
-        socket.emit("actionError","Invalid target");
-        return;
-    }
-    if(game.voting.activeNomination && game.voting.activeNomination!==target){
-        game.voting.executionVotes={};
-    }
-    game.voting.activeNomination=target;
-    game.voting.executionVotes[player.username]=target;
-    let counts={};
-    Object.values(game.voting.executionVotes).forEach(v=>counts[v]=(counts[v]||0)+1);
-    io.to(player.lobbyId).emit("executionVoteUpdate",{target,counts});
-    let aliveCount=gameModule.getAlivePlayers(player.lobbyId).length;
-    let votesFor=counts[target]||0;
-    if(votesFor>=Math.ceil(aliveCount/2)){
-        game.players[target].alive=false;
-        game.voting.executionVotes={};
-        game.voting.activeNomination=null;
-        io.to(player.lobbyId).emit("executionResult",{target});
-    }
+function submitNominationVote(){
+    let select = document.getElementById("nominationTarget");
+    if(!select) return;
+
+    socket.emit(
+        "nominationVote",
+        select.value
+    );
 }
 function resolveSeer(game){
     return game.seerInvestigation
@@ -817,5 +1018,4 @@ function forceAdvancePhase(socket,io){
     }
     processPhaseEnd(player.lobbyId, io);
 }
-module.exports={login,getPlayer,removeAll,disconnect,createGameId,getLobbies,joinLobby,leaveLobby,startGame,checkGameStart,submitWerewolfKill,submitSeerInvestigation,submitSoldierProtection,submitNightDayTimeVote,submitNightNominationLimitVote,submitExecutionVote,submitPhaseReady,forceAdvancePhase,movePlayer,resolveSeer,destroyBuilding,checkWin,updateLobbySettings,submitPhaseReady};
- 
+module.exports={login,getPlayer,removeAll,disconnect,createGameId,getLobbies,joinLobby,leaveLobby,startGame,checkGameStart,submitWerewolfKill,submitSeerInvestigation,submitSoldierProtection,submitNightDayTimeVote,submitNightNominationLimitVote,submitNominationVote,forceAdvancePhase,movePlayer,resolveSeer,destroyBuilding,checkWin,updateLobbySettings,submitPhaseReady};

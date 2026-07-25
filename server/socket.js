@@ -45,7 +45,10 @@ module.exports = function(io){
         socket.on("nightVoteDayTime",value=>players.submitNightDayTimeVote(socket,value,io));
         socket.on("nightVoteNominationLimit",value=>players.submitNightNominationLimitVote(socket,value,io));
         socket.on("executionVote",target=>players.submitExecutionVote(socket,target,io));
-        socket.on("submitPhaseReady",()=>players.submitPhaseReady(socket,io));
         socket.on("forceAdvancePhase",()=>players.forceAdvancePhase(socket,io));
-    });
+        socket.on("submitPhaseReady", () => {
+            console.log("submitPhaseReady received from", socket.id);
+            players.submitPhaseReady(socket, io);
+        });
+});
 };
